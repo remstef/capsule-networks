@@ -4,6 +4,31 @@ https://arxiv.org/abs/1710.09829
 
 PyTorch implementation by Kenta Iwasaki @ Gram.AI.
 """
+
+#
+#  nvcc --version
+#
+#  # cuda
+#  export PATH=/usr/local/cuda-9.1/bin${PATH:+:${PATH}} 
+#  export LD_LIBRARY_PATH=/usr/local/cuda-9.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+#
+#  export PATH=/usr/local/cuda-8.0/bin${PATH:+:${PATH}} 
+#  export LD_LIBRARY_PATH=/usr/local/cuda-8.0/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+#
+#
+#  git clone https://github.com/pytorch/examples.git pytorch-examples
+#  git clone https://github.com/Pierrom/capsule-networks.git
+#
+#  conda install pytorch torchvision cuda91 -c pytorch ....
+#  pip install http://download.pytorch.org/whl/cpu/torch-0.3.1-cp36-cp36m-linux_x86_64.whl
+#  pip install visdom 
+#  conda install tqdm
+#  pip install git+https://github.com/pytorch/tnt.git@master
+#
+#  python -m visdom.server
+#  python3 capsule_network.py
+#
+
 import sys
 sys.setrecursionlimit(15000)
 
@@ -17,6 +42,7 @@ NUM_CLASSES = 10
 NUM_EPOCHS = 500
 NUM_ROUTING_ITERATIONS = 3
 
+cuda_enabled = torch.cuda.is_available() and True
 
 def softmax(input, dim=1):
     transposed_input = input.transpose(dim, len(input.size()) - 1)
@@ -64,7 +90,9 @@ class CapsuleLayer(nn.Module):
         if self.num_route_nodes != -1:
             priors = x[None, :, :, None, :] @ self.route_weights[:, None, :, :, :]
 
-            logits = Variable(torch.zeros(*priors.size())).cuda()
+            logits = Variable(torch.zeros(*priors.size()))
+            if cuda_enabled:
+                logits.cuda()
             for i in range(self.num_iterations):
                 probs = softmax(logits, dim=2)
                 outputs = self.squash((probs * priors).sum(dim=2, keepdim=True))
@@ -110,7 +138,10 @@ class CapsuleNet(nn.Module):
         if y is None:
             # In all batches, get the most active capsule.
             _, max_length_indices = classes.max(dim=1)
-            y = Variable(torch.sparse.torch.eye(NUM_CLASSES)).cuda().index_select(dim=0, index=max_length_indices.data)
+            y = Variable(torch.sparse.torch.eye(NUM_CLASSES))
+            if cuda_enabled:
+                y.cuda()
+            y = y.index_select(dim=0, index=max_length_indices) # index=max_length_indices.data
 
         reconstructions = self.decoder((x * y[:, :, None]).view(x.size(0), -1))
 
@@ -148,7 +179,8 @@ if __name__ == "__main__":
 
     model = CapsuleNet()
     # model.load_state_dict(torch.load('epochs/epoch_327.pt'))
-    model.cuda()
+    if cuda_enabled:
+        model.cuda()
 
     print("# parameters:", sum(param.numel() for param in model.parameters()))
 
@@ -189,8 +221,11 @@ if __name__ == "__main__":
 
         labels = torch.sparse.torch.eye(NUM_CLASSES).index_select(dim=0, index=labels)
 
-        data = Variable(data).cuda()
-        labels = Variable(labels).cuda()
+        data = Variable(data)
+        labels = Variable(labels)
+        if cuda_enabled:
+            data.cuda()
+            labels.cuda()
 
         if training:
             classes, reconstructions = model(data, labels)
@@ -247,7 +282,10 @@ if __name__ == "__main__":
         test_sample = next(iter(get_iterator(False)))
 
         ground_truth = (test_sample[0].unsqueeze(1).float() / 255.0)
-        _, reconstructions = model(Variable(ground_truth).cuda())
+        ground_truth_var = Variable(ground_truth)
+        if cuda_enabled:
+            ground_truth_var.cuda()
+        _, reconstructions = model(ground_truth_var)
         reconstruction = reconstructions.cpu().view_as(ground_truth).data
 
         ground_truth_logger.log(
