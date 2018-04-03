@@ -39,7 +39,7 @@ import numpy as np
 
 BATCH_SIZE = 100
 NUM_CLASSES = 10
-NUM_EPOCHS = 500
+NUM_EPOCHS = 30 # 500
 NUM_ROUTING_ITERATIONS = 3
 
 cuda_enabled = torch.cuda.is_available() and True
@@ -92,7 +92,7 @@ class CapsuleLayer(nn.Module):
 
             logits = Variable(torch.zeros(*priors.size()))
             if cuda_enabled:
-                logits.cuda()
+                logits = logits.cuda()
             for i in range(self.num_iterations):
                 probs = softmax(logits, dim=2)
                 outputs = self.squash((probs * priors).sum(dim=2, keepdim=True))
@@ -140,7 +140,7 @@ class CapsuleNet(nn.Module):
             _, max_length_indices = classes.max(dim=1)
             y = Variable(torch.sparse.torch.eye(NUM_CLASSES))
             if cuda_enabled:
-                y.cuda()
+                y = y.cuda()
             y = y.index_select(dim=0, index=max_length_indices) # index=max_length_indices.data
 
         reconstructions = self.decoder((x * y[:, :, None]).view(x.size(0), -1))
@@ -180,7 +180,7 @@ if __name__ == "__main__":
     model = CapsuleNet()
     # model.load_state_dict(torch.load('epochs/epoch_327.pt'))
     if cuda_enabled:
-        model.cuda()
+        model = model.cuda()
 
     print("# parameters:", sum(param.numel() for param in model.parameters()))
 
@@ -224,8 +224,8 @@ if __name__ == "__main__":
         data = Variable(data)
         labels = Variable(labels)
         if cuda_enabled:
-            data.cuda()
-            labels.cuda()
+            data = data.cuda()
+            labels = labels.cuda()
 
         if training:
             classes, reconstructions = model(data, labels)
@@ -284,7 +284,7 @@ if __name__ == "__main__":
         ground_truth = (test_sample[0].unsqueeze(1).float() / 255.0)
         ground_truth_var = Variable(ground_truth)
         if cuda_enabled:
-            ground_truth_var.cuda()
+            ground_truth_var = ground_truth_var.cuda()
         _, reconstructions = model(ground_truth_var)
         reconstruction = reconstructions.cpu().view_as(ground_truth).data
 
